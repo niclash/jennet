@@ -2,10 +2,15 @@ use "ponytest"
 
 actor Main is TestList
   new create(env: Env) =>
-    Ponytest(env, this)
+    PonyTest(env, this)
 
-  fun tag tests(test: Ponytest) =>
-    test()
+  fun tag tests(test: PonyTest) =>
+    test(_TestMuxTree)
 
-class iso _TestMuxTree
-  let _
+// TODO UTF8 support
+class iso _TestMuxTree is UnitTest
+  fun name(): String => "Test _MuxTree"
+
+  fun apply(h: TestHelper) ? =>
+    let routes
+    let mux = _MuxTree[U8]
