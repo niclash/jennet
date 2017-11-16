@@ -98,11 +98,13 @@ class _MuxTree[A: Any #share]
         for (k, v) in _params.pairs() do
           (if k < i then ps1 else ps2 end).update(k, v)
         end
+        @printf[None]("yup!!!!\n".cstring())
         // branch
         let t = create(prefix.substring(0, i.isize()), ps1)
         let b1 = create(prefix.substring(i.isize()), ps2, _children, _handler)
         let b2 = create(path.substring(i.isize()) where handler' = handler)
         t .> add_child(b1) .> add_child(b2)
+        return t // TODO Don't return, modify in place!!!
       end
     end
 
@@ -150,7 +152,7 @@ class _MuxTree[A: Any #share]
     end
 
   fun apply(path: String, params: Map[String, String] iso):
-    (_JennetHandler, Map[String, String] iso^) ?
+    (A, Map[String, String] iso^) ?
   =>
     var path' = path
     for i in Range[ISize](0, prefix.size().isize()) do
@@ -176,7 +178,7 @@ class _MuxTree[A: Any #share]
     let remaining = path'.substring(prefix.size().isize())
     // check for edge
     if remaining == "" then
-      return (_handler as _JennetHandler, consume params)
+      return (_handler as A, consume params)
     end
     // pass on to child
     for c in _children.values() do

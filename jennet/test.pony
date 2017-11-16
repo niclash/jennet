@@ -1,3 +1,4 @@
+use "collections"
 use "ponytest"
 
 actor Main is TestList
@@ -12,5 +13,50 @@ class iso _TestMuxTree is UnitTest
   fun name(): String => "Test _MuxTree"
 
   fun apply(h: TestHelper) ? =>
-    let routes
-    let mux = _MuxTree[U8]
+    let routes =
+      recover val
+        [ as (String, U8):
+          ("/", 0)
+          ("/foo", 1)
+          ("/:foo", 2)
+          ("/foo/bar/", 3)
+          ("/baz/bar", 4)
+          ("/:foo/baz", 5)
+          ("/foo/bar/*baz", 6)
+          ("/fizz", 7)
+        ]
+      end
+    let mux = _MuxTree[U8]("/")
+    for (path, n) in routes.values() do
+      mux.add_path(path.clone(), n)?
+    end
+
+    let tests =
+      [ as (String, U8, Array[(String, String)]):
+        ("/", 0, [])
+        ("/foo", 1, [])
+        ("/stuff", 2, [("foo", "stuff")])
+        ("/a", 2, [("foo", "a")])
+        ("/1", 2, [("foo", "1")])
+        ("/foo/bar/", 3, [])
+        ("/foo/bar", -1, [])
+        ("/baz/bar", 4, [])
+        ("/stuff/baz", 5, [("foo", "stuff")])
+        ("/stuff/baz/", -1, [])
+        ("/foo/bar/stuff/and/things", 6, [("baz", "stuff/and/things")])
+        ("/foo/bar/a", 6, [("baz", "a")])
+        ("/foo/bar//", 6, [("baz", "/")]) // TODO is this ok?
+        ("/fizz", 7, []) // TODO fix branch on prefix!!!
+      ]
+    for (path, n, params) in tests.values() do
+      if n == -1 then
+        h.assert_error({()? => mux(path, recover Map[String, String] end)? })
+      else
+        (let n', let params') = mux(path, recover Map[String, String] end)?
+        h.assert_eq[U8](n, n')
+        h.assert_eq[USize](params.size(), params'.size())
+        for (param, value) in params.values() do
+          h.assert_eq[String](params'(param)?, value)
+        end
+      end
+    end
