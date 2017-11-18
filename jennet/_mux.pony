@@ -74,7 +74,7 @@ class _MuxTree[A: Any #share]
       let chunk = path.trim(start, i)
       Debug.out(chunk)
       match tok
-      | let s: String => if s != chunk then error end
+      | let s: String => if s != chunk.trim(0, s.size()) then error end
       | let p: _ParamTok => vars(p.name) = chunk
       | let w: _WildTok => vars(w.name) = chunk
       end
@@ -101,14 +101,12 @@ primitive _LexPath
     let toks = Array[_PathTok]
     // reuse path memory for tokens
     var start: USize = 0
-    var len: USize = 0 // TODO necessary with i counter?
-
     var param = false
     var wild = false
 
     let push_tok =
-      {ref(start: USize, len: USize, param: Bool, wild: Bool)(toks) =>
-        let name = path.trim(start, start + len)
+      {ref(start: USize, i: USize, param: Bool, wild: Bool)(toks) =>
+        let name = path.trim(start, i)
         toks.push(
           if param then _ParamTok(name)
           elseif wild then _WildTok(name)
@@ -120,25 +118,21 @@ primitive _LexPath
     for b in path.values() do
       match b
       | '/' => // end of token
-        if len > 0 then // ignore slashes
-          push_tok(start, len, param, wild)
-          (len, param, wild) = (0, false, false)
+        if (i - start) > 0 then // ignore slashes
+          push_tok(start, i, param, wild)
+          (param, wild) = (false, false)
         end
         start = i + 1
       | ':' =>
-        if len > 0 then Debug.out("len > 0 on ':'") end
         param = true
         start = start + 1
       | '*' =>
-        if len > 0 then Debug.out("len > 0 on '*'") end
         wild = true
         start = start + 1
-      else
-        len = len + 1
       end
       i = i + 1
     end
-    if len > 0 then push_tok(start, len, param, wild) end
+    if (i - start) > 0 then push_tok(start, i, param, wild) end
     toks
 
 type _PathTok is (String | _ParamTok | _WildTok)
