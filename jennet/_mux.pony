@@ -12,7 +12,7 @@ class val _RouterMux
     for route_data in routes.values() do
       (let method, let path, let handler) = route_data
       if _methods.contains(method) then
-        _methods(method)?.add_route(path.clone(), handler)?
+        _methods(method)?.add_route(_LexPath(path), handler)?
       else
         _methods(method) =
           _MuxTree[_JennetHandler](path where handler = handler)
@@ -60,12 +60,62 @@ class _MuxTree[A: Any #share]
     _children = children
     _handler = handler
 
-  fun ref add_route(path: String, handler: A) ? =>
-    error // TODO
+  fun is_var_node(): Bool =>
+    try
+      match _path(0)?
+      | let _: String => false
+      else true
+      end
+    else false
+    end
+
+  fun ref add_route(path: Array[_PathTok], handler: A) ? =>
+    Debug.out("add route: " + _log_path(path) + " at " + _log_path())
+    for i in Range(0, _path.size()) do
+      match (_path(i)?, path(i)?)
+      | (let s1: String, let s2: String) => error // TODO eq or split
+      | (let s1: String, _) => error // TODO split?
+      | (_, let s2: String) => error // TODo split?
+      | (_, _) => error // TODO
+      else None
+      end
+    end
+    if path.size() == _path.size() then
+      Debug.out("Error: path already exists: " + _log_path())
+      error
+    end
+    path.trim_in_place(_path.size())
+    Debug.out("remaining: " + _log_path(path))
+    for child in _children.values() do
+      match (child._path(0)?, path(0)?)
+      | (let s1: String, let s2: String) =>
+        if s1 == s2 then return child.add_route(path, handler)? end
+      end
+    end
+    _children.push(_create(path, [], handler))
+    _reorder()?
+
+  fun ref _reorder() ? =>
+    // TODO put param/wild children last, error if there are more than 1
+    if _children.size() < 2 then return end
+    var var_tok_i: USize = -1
+    for (i, child) in _children.pairs() do
+      if child.is_var_node() then
+        if var_tok_i == -1 then var_tok_i = i
+        else
+          Debug.out("Error: ambiguous path added to " + _log_path())
+          error
+        end
+      end
+    end
+    if var_tok_i != -1 then
+      _children.swap_elements(var_tok_i, _children.size() - 1)?
+    end
 
   // TODO make sure given Map is reused in router
   // TODO no partial for better performance on unmatched routes?
   fun get_route(path: String, vars: _Vars): (A, _Vars^) ? =>
+    Debug.out("get route: " + path + " at " + _log_path())
     var i: USize = 0
     for tok in _path.values() do
       while path(i)? == '/' do i = i + 1 end // ignore extra slashes
@@ -82,11 +132,13 @@ class _MuxTree[A: Any #share]
     while (i < path.size()) and (path(i)? == '/') do i = i + 1 end
     // edge reached
     if i == path.size() then return (_handler as A, consume vars) end
-    // TODO continue to children
+    // continue to children
     let remaining = path.trim(i)
+    Debug.out("remaining: " + remaining)
     for child in _children.values() do
       match child._path(0)?
       | let s: String =>
+        Debug.out("yup")
         if s(0)? == remaining(0)? then
           return child.get_route(remaining, consume vars)?
         end
@@ -95,6 +147,25 @@ class _MuxTree[A: Any #share]
       end 
     end
     error // not found
+
+  fun _log_path(path: (Array[_PathTok] box | None) = None): String iso^ =>
+    let path' =
+      match consume path
+      | let p: Array[_PathTok] box => p
+      | None => _path
+      end
+    let str = recover String end
+    if path'.size() == 0 then str.append("/") end
+    for tok in path'.values() do
+      str.append("/")
+      match tok
+      | let s: String => str.append(s)
+      | let p: _ParamTok => str .> append(":") .> append(p.name)
+      | let w: _WildTok => str .> append("*") .> append(w.name)
+      end
+    end
+    // TODO trailing slash?
+    str
 
 primitive _LexPath
   fun apply(path: String): Array[_PathTok] =>

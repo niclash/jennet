@@ -62,8 +62,8 @@ class iso _TestMuxTree is UnitTest
         [ as (String, U8):
           ("/", 0)
           ("/foo", 1)
-          // ("/:foo", 2)
-          // ("/foo/bar/", 3)
+          ("/:foo", 2)
+          ("/foo/bar/", 3)
           // ("/baz/bar", 4)
           // ("/:foo/baz", 5)
           // ("/foo/bar/*baz", 6)
@@ -72,17 +72,17 @@ class iso _TestMuxTree is UnitTest
         ]
       end
     let mux = _MuxTree[U8](routes(0)?._1, routes(0)?._2)
-    for (route, n) in routes.trim(1).values() do
-      mux.add_route(route.clone(), n)?
+    for (path, n) in routes.trim(1).values() do
+      mux.add_route(_LexPath(path), n)?
     end
 
     let tests =
       [ as (String, U8, Array[(String, String)]):
         ("/", 0, [])
         ("/foo", 1, [])
-        // ("/stuff", 2, [("foo", "stuff")])
-        // ("/a", 2, [("foo", "a")])
-        // ("/1", 2, [("foo", "1")])
+        ("/stuff", 2, [("foo", "stuff")])
+        ("/a", 2, [("foo", "a")])
+        ("/1", 2, [("foo", "1")])
         // ("/foo/bar/", 3, [])
         // ("/foo/bar", -1, [])
         // ("/baz/bar", 4, [])
