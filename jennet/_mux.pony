@@ -1,6 +1,5 @@
 use "collections"
-
-use "debug" // TODO remove
+use "debug" // TODO logger?
 
 type _RouteData is (String, String, _JennetHandler)
   """(method, path, handler)"""
@@ -16,7 +15,7 @@ class val _RouterMux
         _methods(method)?.add_route(path.clone(), handler)?
       else
         _methods(method) =
-          _MuxTree[_JennetHandler](path where handler' = handler)
+          _MuxTree[_JennetHandler](path where handler = handler)
       end
     end
 
@@ -32,28 +31,32 @@ class val _RouterMux
       if path(0)? != '/' then recover path.clone() .> unshift('/') end
       else path
       end
-    _methods(method)?(path', recover Map[String, String] end)?
+    _methods(method)?.get_route(path', recover Map[String, String] end)?
+
+type Vars is Map[String, String] iso
 
 // TODO UTF-8 support
 class _MuxTree[A: Any #share]
   """
   Radix tree with support for path variables and wildcards
   """
-  var _root: _MuxTree[A]
   var _path: Array[_PathTok]
   var _trailing_slash: Bool
 
   new create(path: String, handler: A) =>
-    _path = _lex_path(path)
+    _path = _LexPath(path)
+    _trailing_slash = false // TODO
+    // _trailing_slash = try path(path.size()-1)? == '/' else false end
 
   fun ref add_route(path: String, handler: A) ? =>
     error // TODO
 
-  // TODO add parameter for vars to allow reuse
-  fun get_route(path: String): (A, Map[String, String] iso^) ? =>
-    _root.get_route(path, recover Map[String, String] end)?
+  // TODO reuse given Map
+  fun get_route(path: String, vars: Vars): (A, Vars^) ? =>
+    error // TODO
 
-  fun _lex_path(path: String): Array[_PathTok] =>
+primitive _LexPath
+  fun apply(path: String): Array[_PathTok] =>
     let toks = Array[_PathTok]
     // reuse path memory for tokens
     var start: USize = 0
@@ -63,38 +66,56 @@ class _MuxTree[A: Any #share]
     var wild = false
 
     let push_tok =
-      {(start: USize, len: USize, param: Bool, wild: Bool) =>
+      {ref(start: USize, len: USize, param: Bool, wild: Bool) =>
         let name = path.trim(start, start + len)
+        Debug.out(name)
         toks.push(
-          if param then ParamTok(name)
-          elseif wild then WildTok(name)
+          if param then _ParamTok(name)
+          elseif wild then _WildTok(name)
           else name
           end) 
       }
 
+    Debug.out("")
+
+    var i: USize = 0
     for b in path.values() do
+      Debug.out(String.>push(b))
       match b
       | '/' => // end of token
-        if buff.size() == 0 then continue // ignore leading & duplicate slashes
+        start = i + 1
+        if len == 0 then None // ignore leading & duplicate slashes
         else
           push_tok(start, len, param, wild)
-          (start, len, param, wild) = (0, 0, false, false)
+          Debug.out("reset")
+          (len, param, wild) = (0, false, false)
         end
+      | ':' =>
+        if len > 0 then Debug.out("len > 0 on ':'") end
+        param = true
+        start = start + 1
+      | '*' =>
+        if len > 0 then Debug.out("len > 0 on '*'") end
+        wild = true
+        start = start + 1
+      else
+        len = len + 1
       end
+      i = i + 1
     end
-    if buff.size() > 0 then push_tok(start, len, param, wild) end
+    if len > 0 then push_tok(start, len, param, wild) end
     toks
 
-type _PathTok is (String | ParamTok | WildTok)
+type _PathTok is (String | _ParamTok | _WildTok)
 
-class val ParamTok
+class val _ParamTok
   let name: String
   
-  new create(name': String) =>
+  new val create(name': String) =>
     name = name'
 
-class val WildTok
+class val _WildTok
   let name: String
 
-  new create(name': String) =>
+  new val create(name': String) =>
     name = name'
