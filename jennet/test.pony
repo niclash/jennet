@@ -65,8 +65,8 @@ class iso _TestMuxTree is UnitTest
         ("/baz/bar", 4)
         ("/:foo/baz", 5)
         ("/foo/bar/*baz", 6)
-        // ("/fi", 7)
-        // ("/fizz", 8)
+        ("/fi", 7)
+        ("/fizz", 8)
       ],
       [ ("/", 0, [])
         ("/foo", 1, [])
@@ -81,18 +81,20 @@ class iso _TestMuxTree is UnitTest
         ("/foo/bar/stuff/and/things", 6, [("baz", "stuff/and/things")])
         ("/foo/bar/a", 6, [("baz", "a")])
         ("/foo/bar//", 3, []) // TODO should this be configurable?
-        // ("/fi", 7, [])
-        // ("/fizz", 8, [])
+        ("/fi", 7, [])
+        ("/fizz", 8, [])
       ])?
     _run_tests(h,
       [ ("/foo/:bar/baz", 1)
         ("/fiz/:bar/baz", 2)
         ("/foo/biz/baz", 3)
-        ("/baz/", 4)
+        ("/*baz", 4)
+        ("/baz/", 5)
       ],
-      [ 
-        ("/foo/bar/baz", 1, [("bar", "bar")])
+      [ ("/foo/bar/baz", 1, [("bar", "bar")])
         ("/fiz/bar/baz", 2, [("bar", "bar")])
+        ("/foo/biz/baz", 3, [])
+        ("/foo", 4, [("baz", "foo")]) // fallback to last wild on failure
         ("/foo/biz/baz", 3, [])
       ])?
 

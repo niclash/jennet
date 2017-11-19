@@ -1,6 +1,8 @@
 use "collections"
 use "debug" // TODO logger?
 
+// TODO cleanup extra debugging
+
 type _RouteData is (String, String, _JennetHandler)
   """(method, path, handler)"""
 
@@ -81,15 +83,17 @@ class _MuxTree[A: Any #share]
           end
           // split static
           Debug.out("split static")
+          // TODO can this just use _fork with some tweaking?
           var cut: USize = 1
           while s1(cut)? == s2(cut)? do cut = cut + 1 end
           let p1 = _path.slice(i) .> update(0, s1.trim(cut))?
           let p2 = path .> update(0, s2.trim(cut))?
-          _children
-            .> push(_create(p1, [], _handler))
+          let children' = Array[_MuxTree[A]]
+            .> push(_create(p1, _children, _handler))
             .> push(_create(p2, [], handler))
           _path = _path.slice(0, i + 1)
           _path(i)? = s1.trim(0, cut)
+          _children = children'
           _handler = None
           _reorder()?
           return
@@ -104,8 +108,8 @@ class _MuxTree[A: Any #share]
           continue
         end
       | (let s1: String, _) =>
-        Debug.out("TODO") // TODO test this
-        error
+        _fork(i, path, handler)?
+        return
       | (_, let s2: String) =>
         _fork(i, path, handler)?
         return
@@ -183,11 +187,14 @@ class _MuxTree[A: Any #share]
       end
     end
     while (i < path.size()) and (path(i)? == '/') do i = i + 1 end
-    // edge reached
-    if i == path.size() then return (_handler as A, consume vars) end
+    if i == path.size() then // edge reached
+      Debug.out("edge")
+      return (_handler as A, consume vars)
+    end
     // continue to children
     let remaining = path.trim(i)
     Debug.out("remaining: " + remaining)
+
     for child in _children.values() do
       match child._path(0)?
       | let s: String =>
@@ -195,13 +202,26 @@ class _MuxTree[A: Any #share]
         if s == remaining.trim(0, s.size()) then
           return child.get_route(remaining, consume vars)?
         end
-      else // give to param or wild (must be last in _children)
-        Debug.out("variable child")
+      // give to param or wild (must be last in _children)
+      | let p: _ParamTok =>
+        return child.get_route(remaining, consume vars)?
+      | let w: _WildTok =>
         return child.get_route(remaining, consume vars)?
       end 
     end
     Debug.out("not found")
     error // not found
+
+  fun _try_wild(path: String, vars: _Vars): (A, _Vars^) ? =>
+    if (_children.size() > 0) then
+      try
+        let last_child = _children(_children.size() - 1)?
+        match last_child._path(0)?
+        | let w: _WildTok => return last_child.get_route(path, consume vars)?
+        end
+      end
+    end
+    error
 
   fun _log_path(path: (Array[_PathTok] box | None) = None): String iso^ =>
     let path' =
