@@ -73,13 +73,33 @@ class _MuxTree[A: Any #share]
     Debug.out("add route: " + _log_path(path) + " at " + _log_path())
     for i in Range(0, _path.size()) do
       match (_path(i)?, path(i)?)
-      | (let s1: String, let s2: String) => error // TODO eq or split
-      | (let s1: String, _) => error // TODO split?
-      | (_, let s2: String) => error // TODo split?
-      | (_, _) => error // TODO
-      else None
+      | (let s1: String, let s2: String) =>
+        if s1 != s2 then
+          var cut: USize = 1
+          while s1(cut)? == s2(cut)? do cut = cut + 1 end
+          let p1 = _path.slice(i) .> update(0, s1.trim(cut))?
+          let p2 = path.slice(i) .> update(0, s2.trim(cut))?
+          _children
+            .> push(_create(p1, [], _handler))
+            .> push(_create(p2, [], handler))
+          _path = _path.slice(0, i + 1)
+          _path(i)? = s1.trim(0, cut)
+          _handler = None
+          _reorder()?
+          return
+        end
+      | (let s1: String, _) | (_, let s2: String) =>
+        // TODO test this
+        _children
+          .> push(_create(_path.slice(i), [], _handler))
+          .> push(_create(path.slice(i), [], handler))
+        _path = _path.slice(0, i)
+        _handler = None
+        _reorder()?
+        return
       end
     end
+    Debug.out("yup")
     if path.size() == _path.size() then
       Debug.out("Error: path already exists: " + _log_path())
       error
@@ -89,9 +109,16 @@ class _MuxTree[A: Any #share]
     for child in _children.values() do
       match (child._path(0)?, path(0)?)
       | (let s1: String, let s2: String) =>
-        if s1 == s2 then return child.add_route(path, handler)? end
+        if s1(0)? == s2(0)? then
+          return child.add_route(path, handler)?
+        end
+      | (let p1: _ParamTok, let p2: _ParamTok) =>
+        if p1.name == p2.name then
+          return child.add_route(path, handler)?
+        end
       end
     end
+    Debug.out("new child")
     _children.push(_create(path, [], handler))
     _reorder()?
 
@@ -119,14 +146,19 @@ class _MuxTree[A: Any #share]
     var i: USize = 0
     for tok in _path.values() do
       while path(i)? == '/' do i = i + 1 end // ignore extra slashes
-      let start: USize = i
-      while (i < path.size()) and (path(i)? != '/') do i = i + 1 end
-      let chunk = path.trim(start, i)
-      Debug.out(chunk)
       match tok
-      | let s: String => if s != chunk.trim(0, s.size()) then error end
-      | let p: _ParamTok => vars(p.name) = chunk
-      | let w: _WildTok => vars(w.name) = chunk
+      | let s: String =>
+        let chunk = path.trim(i, i + s.size())
+        if s != chunk then error end
+        i = i + s.size()
+      | let p: _ParamTok =>
+        Debug.out("param " + path.trim(i))
+        let start = i
+        while (i < path.size()) and (path(i)? != '/') do i = i + 1 end
+        vars(p.name) = path.trim(start, i)
+      | let w: _WildTok =>
+        vars(w.name) = path.trim(i)
+        return (_handler as A, consume vars)
       end
     end
     while (i < path.size()) and (path(i)? == '/') do i = i + 1 end
@@ -138,7 +170,7 @@ class _MuxTree[A: Any #share]
     for child in _children.values() do
       match child._path(0)?
       | let s: String =>
-        Debug.out("yup")
+        // Debug.out("yup " + s)
         if s(0)? == remaining(0)? then
           return child.get_route(remaining, consume vars)?
         end
