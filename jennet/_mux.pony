@@ -71,14 +71,20 @@ class _MuxTree[A: Any #share]
 
   fun ref add_route(path: Array[_PathTok], handler: A) ? =>
     Debug.out("add route: " + _log_path(path) + " at " + _log_path())
-    for i in Range(0, _path.size()) do
-      match (_path(i)?, path(i)?)
+    for (i, tok) in _path.pairs() do
+      match (tok, path(0)?)
       | (let s1: String, let s2: String) =>
-        if s1 != s2 then
+        if s1 != s2.trim(0, s1.size()) then
+          if s1(0)? != s2(0)? then // fork at root
+            _fork(i, path, handler)?
+            return
+          end
+          // split static
+          Debug.out("split static")
           var cut: USize = 1
           while s1(cut)? == s2(cut)? do cut = cut + 1 end
           let p1 = _path.slice(i) .> update(0, s1.trim(cut))?
-          let p2 = path.slice(i) .> update(0, s2.trim(cut))?
+          let p2 = path .> update(0, s2.trim(cut))?
           _children
             .> push(_create(p1, [], _handler))
             .> push(_create(p2, [], handler))
@@ -87,29 +93,35 @@ class _MuxTree[A: Any #share]
           _handler = None
           _reorder()?
           return
+        elseif s1 != s2 then
+          // partial static
+          Debug.out("partial static")
+          var cut: USize = 1
+          while(cut < s1.size()) and (s1(cut)? == s2(cut)?) do 
+            cut = cut + 1
+          end
+          path(0)? = s2.trim(cut)
+          continue
         end
-      | (let s1: String, _) | (_, let s2: String) =>
-        // TODO test this
-        _children
-          .> push(_create(_path.slice(i), [], _handler))
-          .> push(_create(path.slice(i), [], handler))
-        _path = _path.slice(0, i)
-        _handler = None
-        _reorder()?
+      | (let s1: String, _) =>
+        Debug.out("TODO") // TODO test this
+        error
+      | (_, let s2: String) =>
+        _fork(i, path, handler)?
         return
       end
+      path.shift()?
     end
-    Debug.out("yup")
-    if path.size() == _path.size() then
+    if path.size() == 0 then
       Debug.out("Error: path already exists: " + _log_path())
       error
     end
-    path.trim_in_place(_path.size())
     Debug.out("remaining: " + _log_path(path))
     for child in _children.values() do
       match (child._path(0)?, path(0)?)
       | (let s1: String, let s2: String) =>
         if s1(0)? == s2(0)? then
+          Debug.out("add to static child: " + s1)
           return child.add_route(path, handler)?
         end
       | (let p1: _ParamTok, let p2: _ParamTok) =>
@@ -120,6 +132,15 @@ class _MuxTree[A: Any #share]
     end
     Debug.out("new child")
     _children.push(_create(path, [], handler))
+    _reorder()?
+
+  fun ref _fork(i: USize, path: Array[_PathTok], handler: A) ? =>
+    let children' = Array[_MuxTree[A]]
+      .> push(_create(_path.slice(i), _children, _handler))
+      .> push(_create(path, [], handler))
+    _path = _path.slice(0, i)
+    _children = children'
+    _handler = None
     _reorder()?
 
   fun ref _reorder() ? =>
@@ -170,14 +191,16 @@ class _MuxTree[A: Any #share]
     for child in _children.values() do
       match child._path(0)?
       | let s: String =>
-        // Debug.out("yup " + s)
-        if s(0)? == remaining(0)? then
+        Debug.out("static child " + s)
+        if s == remaining.trim(0, s.size()) then
           return child.get_route(remaining, consume vars)?
         end
       else // give to param or wild (must be last in _children)
+        Debug.out("variable child")
         return child.get_route(remaining, consume vars)?
       end 
     end
+    Debug.out("not found")
     error // not found
 
   fun _log_path(path: (Array[_PathTok] box | None) = None): String iso^ =>
@@ -187,16 +210,34 @@ class _MuxTree[A: Any #share]
       | None => _path
       end
     let str = recover String end
-    if path'.size() == 0 then str.append("/") end
     for tok in path'.values() do
-      str.append("/")
       match tok
       | let s: String => str.append(s)
       | let p: _ParamTok => str .> append(":") .> append(p.name)
       | let w: _WildTok => str .> append("*") .> append(w.name)
       end
+      str.append("/")
     end
     // TODO trailing slash?
+    // if (path'.size() > 0) and (_handler is None) then
+    if path'.size() > 0 then
+      try str.pop()? end
+    end
+    str
+
+  fun _debug_tree(indent: USize = 0): String iso^ =>
+    // TODO make pretty like tree command
+    let str = recover String end
+    if indent == 0 then
+      str.append("/")
+    else
+      for i in Range(0, indent + str.size()) do str.append(" ") end
+    end
+    str.append(_log_path())
+    let indent' = str.size()
+    for child in _children.values() do
+      str .> append("\n") .> append(child._debug_tree(indent'))
+    end
     str
 
 primitive _LexPath

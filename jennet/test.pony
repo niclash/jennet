@@ -58,14 +58,6 @@ class iso _TestMuxTree is UnitTest
 
   fun apply(h: TestHelper) ? =>
     _run_tests(h,
-      [ ("/foo/:bar/baz", 1)
-        ("/fiz/:bar/baz", 2)
-        // ("/foo/biz/baz", 3)
-      ],
-      [ ("/foo/bar/baz", 1, [("bar", "bar")])
-        ("/fiz/bar/baz", 2, [("bar", "bar")])
-      ])?
-    _run_tests(h,
       [ ("/", 0)
         ("/foo", 1)
         ("/:foo", 2)
@@ -92,6 +84,17 @@ class iso _TestMuxTree is UnitTest
         // ("/fi", 7, [])
         // ("/fizz", 8, [])
       ])?
+    _run_tests(h,
+      [ ("/foo/:bar/baz", 1)
+        ("/fiz/:bar/baz", 2)
+        ("/foo/biz/baz", 3)
+        ("/baz/", 4)
+      ],
+      [ 
+        ("/foo/bar/baz", 1, [("bar", "bar")])
+        ("/fiz/bar/baz", 2, [("bar", "bar")])
+        ("/foo/biz/baz", 3, [])
+      ])?
 
   fun _run_tests(
     h: TestHelper,
@@ -101,6 +104,7 @@ class iso _TestMuxTree is UnitTest
     let mux = _MuxTree[U8](routes(0)?._1, routes(0)?._2)
     for (path, n) in routes.slice(1).values() do
       mux.add_route(_LexPath(path), n)?
+      h.log(mux._debug_tree() + "\n")
     end
 
     for (path, n, params) in tests.values() do
