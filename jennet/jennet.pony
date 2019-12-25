@@ -20,7 +20,8 @@ class iso Jennet
   =>
     _responder = match responder
     | let r: Responder => r
-    else DefaultResponder(out)
+    else 
+      DefaultResponder(out, host, service)
     end
     _server = HTTPServer(
       auth,

@@ -13,14 +13,18 @@ class val DefaultResponder is Responder
   let _out: OutStream
   let _host: String
 
-  new val create(out: OutStream) =>
+  new val create(out: OutStream, host':String, service':String) =>
     _out = out
-    _host = try
-      (let host, let service) = NetAddress.name()?
-      recover String.>append(host).>push(':').>append(service) end
-    else
-      "Jennet" // TODO get IP from server
+    let h = try 
+      if host'.find(":")? > 0 then
+        recover String.>push('[').>append(host').>push(']') end
+      else 
+        host'
+      end 
+    else 
+      host' 
     end
+    _host = recover String.>append(h).>push(':').>append(service') end
 
   fun apply(req: Payload val, res: Payload val, response_time: U64) =>
     let time = try PosixDate(Time.seconds()).format("%d/%b/%Y %H:%M:%S")? else "ERROR" end
