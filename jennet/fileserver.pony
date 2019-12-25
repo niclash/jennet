@@ -16,8 +16,10 @@ class _FileServer is Handler
       with
         file = OpenFile(FilePath(_auth, _filepath, caps)?) as File
       do
-        for line in file.lines() do
-          r.add_chunk(consume line)
+        while true do
+          let chunk:Array[U8] iso = file.read(2048)
+          if chunk.size() == 0 then break end
+          r.add_chunk(consume chunk)
         end
       end
       consume r
@@ -44,8 +46,10 @@ class _DirServer is Handler
       with
         file = OpenFile(FilePath(_auth, path, caps)?) as File
       do
-        for line in file.lines() do
-          r.add_chunk(consume line)
+        while true do
+          let chunk:Array[U8] iso = file.read(2048)
+          if chunk.size() == 0 then break end
+          r.add_chunk(consume chunk)
         end
       end
       consume r

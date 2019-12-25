@@ -10,11 +10,11 @@ class iso Jennet
   var _base_middlewares: Array[Middleware] val = recover Array[Middleware] end
   let _routes: Array[_Route] iso = recover Array[_Route] end
   var _notfound: _HandlerGroup = _HandlerGroup(_DefaultNotFound)
-  var _host: String = "Jennet" // TODO get host from server
 
   new iso create(
     auth: (AmbientAuth val | NetAuth val),
     out: OutStream,
+    host: String,
     service: String,
     responder: (Responder | None) = None)
   =>
@@ -26,8 +26,10 @@ class iso Jennet
       auth,
       _ServerInfo(out, _responder),
       _UnavailableFactory,
-      DiscardLog
-      where service = service, reversedns = auth
+      DiscardLog,
+      host, 
+      service
+      where reversedns = auth
     )
     _out = out
     _auth = auth

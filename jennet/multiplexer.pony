@@ -13,7 +13,8 @@ class iso _Multiplexer
       let method = r.method
       let hg = _HandlerGroup(r.hg.handler, r.hg.middlewares)
       if _methods.contains(method) then
-        _methods(method) = _methods(method)?.add(r.path.clone(), hg)?
+//         _methods(method) = _methods(method)?.add(r.path.clone(), hg)?
+        _methods(method)?.add(r.path.clone(), hg)?
       else
         _methods(method) = _Node(r.path, hg)
       end
@@ -99,9 +100,13 @@ class _Node
           end
         end
         // branch
-        let n1 = create(prefix.substring(0, i.isize()), None, params0)
-        let n2 = create(prefix.substring(i.isize()), _hg, params1, _children)
-        let n3 = create(path.substring(i.isize()), hg)
+        let prefix1:String val = prefix.substring(0, i.isize())
+        let prefix2:String val = prefix.substring(i.isize())
+        let prefix3:String val = path.substring(i.isize())
+//         @printf[I32]("NICLAS!!!   %s - %s - %s\n".cstring(), prefix1.cstring(), prefix2.cstring(), prefix3.cstring() )
+        let n1 = create(prefix1, None, params0)
+        let n2 = create(prefix2, _hg, params1, _children)
+        let n3 = create(prefix3, hg)
         n1.add_child(n2)
         n1.add_child(n3)
         return n1

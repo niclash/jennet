@@ -16,8 +16,8 @@ class iso _TestMultiplexer is UnitTest
 
   fun apply(h: TestHelper) ? =>
     let ts = recover Array[(String, _HandlerGroup)] end
-    ts.push(("/", _HandlerGroup(_TestHandler("0"))))
     ts.push(("/foo", _HandlerGroup(_TestHandler("1"))))
+    ts.push(("/", _HandlerGroup(_TestHandler("0"))))
     ts.push(("/:foo", _HandlerGroup(_TestHandler("2"))))
     ts.push(("/foo/bar/", _HandlerGroup(_TestHandler("3"))))
     ts.push(("/baz/bar", _HandlerGroup(_TestHandler("4"))))
@@ -28,9 +28,12 @@ class iso _TestMultiplexer is UnitTest
     for (p, hg) in tests.values() do
       routes.push(_Route("GET", p, hg))
     end
+    h.log("10")
     let mux = recover val _Multiplexer(consume routes)? end
+    h.log("11")
 
     (var hg, var ps) = mux("GET", "/")?
+    h.log("12")
     h.assert_eq[String]("0", (hg.handler as _TestHandler val).msg)
 
     (hg, ps) = mux("GET", "/foo")?
