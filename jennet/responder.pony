@@ -1,13 +1,14 @@
 use "net"
-use "http"
+use "http_server"
 use "term"
 use "time"
+use "valbytes"
 
 interface val Responder
   """
   Responds to the request and creates a log.
   """
-  fun apply(req: Payload val, res: Payload val, response_time: U64)
+  fun apply(res: Response, body: ByteArrays, ctx: Context box)
 
 class val DefaultResponder is Responder
   let _out: OutStream
@@ -15,50 +16,40 @@ class val DefaultResponder is Responder
 
   new val create(out: OutStream, host':String, service':String) =>
     _out = out
-    let h = try 
-      if host'.find(":")? > 0 then
-        recover String.>push('[').>append(host').>push(']') end
-      else 
-        host'
-      end 
-    else 
-      host' 
-    end
-    _host = recover String.>append(h).>push(':').>append(service') end
-
-  fun apply(req: Payload val, res: Payload val, response_time: U64) =>
-    let time = try PosixDate(Time.seconds()).format("%d/%b/%Y %H:%M:%S")? else "ERROR" end
-    let status = res.status
-    _out.writev(recover
-      Array[String](15)
-        .>push("[")
-        .>push(_host)
-        .>push("] ")
-        .>push(time)
-        .>push(" |")
-        .>push(
-          if (status >= 200) and (status < 300) then
-            ANSI.bright_green()
-          elseif (status >= 300) and (status < 400) then
-            ANSI.bright_blue()
-          elseif (status >= 400) and (status < 500) then
-            ANSI.bright_yellow()
+        let h = try
+          if host'.find(":")? > 0 then
+            recover String.>push('[').>append(host').>push(']') end
           else
-            ANSI.bright_red()
-          end)
-        .>push(status.string())
-        .>push(ANSI.reset())
-        .>push("| ")
-        .>push(_format_time(response_time))
-        .>push(" | ")
-        .>push(req.method)
-        .>push(" ")
-        .>push(req.url.path)
-        .>push("\n")
-    end)
-    try
-      (req.session as HTTPSession).apply(res)
-    end
+            host'
+          end
+        else
+          host'
+        end
+        _host = recover String.>append(h).>push(':').>append(service') end
+
+
+  fun apply(res: Response, body: ByteArrays, ctx: Context box)
+  =>
+    ctx.session.send(res, body, ctx.request_id)
+
+    let response_time = Time.nanos() - ctx.start_time
+    let time = try PosixDate(Time.seconds()).format("%d/%b/%Y %H:%M:%S")? else "ERROR" end
+    let status = res.status()()
+    _out.writev(
+      [ "["; _host; "] "; time; " |"
+        if (status >= 200) and (status < 300) then
+          ANSI.bright_green()
+        elseif (status >= 300) and (status < 400) then
+          ANSI.bright_blue()
+        elseif (status >= 400) and (status < 500) then
+          ANSI.bright_yellow()
+        else
+          ANSI.bright_red()
+        end
+        status.string(); ANSI.reset()
+        "| "; _format_time(response_time); " | "; ctx.request.method().repr()
+        " "; ctx.request.uri().path; "\n"
+      ])
 
   fun _format_time(response_time: U64): String =>
     var padding = "       "
@@ -107,40 +98,38 @@ class val CommonResponder is Responder
       "jennet"
     end
 
-  fun apply(req: Payload val, res: Payload val, response_time: U64) =>
-    let user = req.url.user
-    _out.writev(recover
-      let list = Array[String](24)
-        .>push(_host)
-        .>push(" - ")
-        .>push(if user.size() > 0 then user else "-" end)
-        .>push(" [")
-        .>push(try PosixDate(Time.seconds()).format("%d/%b/%Y:%H:%M:%S +0000")? else "ERROR" end)
-        .>push("] \"")
-        .>push(req.method)
-        .>push(" ")
-        .>push(req.url.path)
-      if req.url.query.size() > 0 then
-        list.push("?")
-        list.push(req.url.query)
+  fun apply(res: Response, body: ByteArrays, ctx: Context box) =>
+    ctx.session.send(res, body, ctx.request_id)
+
+    let user = ctx.request.uri().user
+    let referrer =
+      match ctx.request.header("Referrer")
+      | let s: String => s
+      | None => ""
       end
-      if req.url.fragment.size() > 0 then
-        list.push("#")
-        list.push(req.url.fragment)
+    let ua =
+      match ctx.request.header("User-Agent")
+      | let s: String => s
+      | None => ""
       end
-      list
-        .>push(" ")
-        .>push(req.proto)
-        .>push("\" ")
-        .>push(res.status.string())
-        .>push(" ")
-        .>push(res.body_size().string())
-        .>push(" \"")
-      try list.push(req("Referrer")?) end
-      list.push("\" \"")
-      try list.push(req("User-Agent")?) end
-      list.>push("\"\n")
-    end)
-    try
-      (req.session as HTTPSession).apply(res)
-    end
+
+    _out.writev(
+      [ _host; " - "
+        if user.size() > 0 then user else "-" end
+        " ["
+        try PosixDate(Time.seconds()).format("%d/%b/%Y:%H:%M:%S +0000")?
+        else "ERROR"
+        end
+        "] \""; ctx.request.method().repr(); " "
+        ctx.request.uri().path
+        if ctx.request.uri().query.size() > 0
+        then "?" + ctx.request.uri().query
+        else ""
+        end
+        if ctx.request.uri().fragment.size() > 0
+        then "#" + ctx.request.uri().fragment
+        else ""
+        end
+        " "; ctx.request.version().string(); "\" "; res.status().string()
+        " "; body.size().string(); " \""; referrer; "\" \""; ua; "\"\n"
+      ])

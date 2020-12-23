@@ -1,33 +1,30 @@
-use "http"
+use "http_server"
 use "../../jennet"
 
 actor Main
   new create(env: Env) =>
-    let auth = try
-      env.root as AmbientAuth
-    else
-      env.out.print("unable to use network.")
-      return
-    end
+    let auth =
+      try
+        env.root as AmbientAuth
+      else
+        env.out.print("unable to use network.")
+        return
+      end
 
-    let jennet = Jennet(auth, env.out, "8080")
-    jennet.get("/", H)
-    jennet.get("/:name", H)
+    let server =
+      Jennet(auth, env.out)
+        .> get("/", H)
+        .> get("/:name", H)
+        .serve(ServerConfig(where port' = "8080"))
 
-    try
-      (consume jennet).serve()?
-    else
-      env.out.print("invalid routes.")
-    end
+    if server is None then env.out.print("bad routes!") end
 
-primitive H is Handler
-  fun apply(c: Context, req: Payload val): Context iso^ =>
-    let res = Payload.response()
-    let name = c.param("name")
-    res.add_chunk("Hello")
-    if name != "" then
-      res.add_chunk(" " + name)
-    end
-    res.add_chunk("!")
-    c.respond(req, consume res)
-    consume c
+primitive H is RequestHandler
+  fun apply(ctx: Context): Context iso^ =>
+    let name = ctx.param("name")
+    let body =
+      "".join(
+        [ "Hello"; if name != "" then " " + name else "" end; "!"
+        ].values()).array()
+    ctx.respond(StatusResponse(StatusOK), body)
+    consume ctx

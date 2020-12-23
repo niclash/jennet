@@ -1,60 +1,46 @@
 use "files"
-use "http"
+use "http_server"
+use "valbytes"
 
-class _FileServer is Handler
-  let _auth: AmbientAuth
-  let _filepath: String
+class _FileServer is RequestHandler
+  let _filepath: FilePath
 
-  new val create(auth: AmbientAuth, filepath: String) =>
-    _auth = auth
-    _filepath = Path.abs(filepath)
+  new val create(filepath: FilePath) =>
+    _filepath = filepath
 
-  fun val apply(c: Context, req: Payload val): Context iso^ =>
-    let caps = recover val FileCaps.>set(FileRead).>set(FileStat) end
-    let res = try
-      let r = Payload.response()
-      with
-        file = OpenFile(FilePath(_auth, _filepath, caps)?) as File
-      do
+  fun val apply(ctx: Context): Context iso^ =>
+    try
+      var bs = ByteArrays
+      with file = OpenFile(_filepath) as File do
         while true do
           let chunk:Array[U8] iso = file.read(2048)
           if chunk.size() == 0 then break end
-          r.add_chunk(consume chunk)
+          bs = bs + consume chunk
         end
       end
-      consume r
+      ctx.respond(StatusResponse(StatusOK), bs)
     else
-      _NotFoundRes()
+      ctx.respond(StatusResponse(StatusNotFound))
     end
-    c.respond(req, consume res)
-    consume c
+    consume ctx
 
-class _DirServer is Handler
-  let _auth: AmbientAuth
-  let _dir: String
+class _DirServer is RequestHandler
+  let _dir: FilePath
 
-  new val create(auth: AmbientAuth, dir: String) =>
-    _auth = auth
-    _dir = Path.abs(dir)
+  new val create(dir: FilePath) =>
+    _dir = dir
 
-  fun val apply(c: Context, req: Payload val): Context iso^ =>
-    let caps = recover val FileCaps.>set(FileRead).>set(FileStat) end
-    let filepath = c.param("filepath")
-    let res = try
-      let r = Payload.response()
-      let path = Path.join(_dir, filepath)
-      with
-        file = OpenFile(FilePath(_auth, path, caps)?) as File
-      do
-        while true do
-          let chunk:Array[U8] iso = file.read(2048)
-          if chunk.size() == 0 then break end
-          r.add_chunk(consume chunk)
+  fun val apply(ctx: Context): Context iso^ =>
+    let filepath = ctx.param("filepath")
+    try
+      var bs = ByteArrays
+      with file = OpenFile(_dir.join(filepath)?) as File do
+        for line in file.lines() do
+          bs = bs + consume line
         end
       end
-      consume r
+      ctx.respond(StatusResponse(StatusOK), bs)
     else
-      _NotFoundRes()
+      ctx.respond(StatusResponse(StatusNotFound))
     end
-    c.respond(req, consume res)
-    consume c
+    consume ctx

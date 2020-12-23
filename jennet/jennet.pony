@@ -1,13 +1,14 @@
 use "collections"
+use "files"
+use "http_server"
 use "net"
-use "http"
+use "valbytes"
 
 class iso Jennet
-  let _server: HTTPServer
   let _out: OutStream
   let _auth: (AmbientAuth val | NetAuth val)
   var _responder: Responder
-  var _base_middlewares: Array[Middleware] val = recover Array[Middleware] end
+  var _base_middlewares: Array[Middleware] val = []
   let _routes: Array[_Route] iso = recover Array[_Route] end
   var _notfound: _HandlerGroup = _HandlerGroup(_DefaultNotFound)
 
@@ -18,25 +19,18 @@ class iso Jennet
     service: String,
     responder: (Responder | None) = None)
   =>
-    _responder = match responder
-    | let r: Responder => r
-    else 
-      DefaultResponder(out, host, service)
-    end
-    _server = HTTPServer(
-      auth,
-      _ServerInfo(out, _responder),
-      _UnavailableFactory,
-      DiscardLog,
-      host, 
-      service
-      where reversedns = auth
-    )
+    _responder =
+      match responder
+      | let r: Responder => r
+      else DefaultResponder(out, host, service)
+      end
     _out = out
     _auth = auth
 
-  fun ref get(path: String, handler: Handler,
-    middlewares: Array[Middleware] val = recover Array[Middleware] end)
+  fun ref get(
+    path: String,
+    handler: RequestHandler,
+    middlewares: Array[Middleware] val = [])
   =>
     """
     Create a route for a GET method on the given URL path with the given
@@ -44,8 +38,10 @@ class iso Jennet
     """
     _add_route("GET", path, handler, middlewares)
 
-  fun ref post(path: String, handler: Handler,
-    middlewares: Array[Middleware] val = recover Array[Middleware] end)
+  fun ref post(
+    path: String,
+    handler: RequestHandler,
+    middlewares: Array[Middleware] val = [])
   =>
     """
     Create a route for a POST method on the given URL path with the given
@@ -53,8 +49,10 @@ class iso Jennet
     """
     _add_route("POST", path, handler, middlewares)
 
-  fun ref put(path: String, handler: Handler,
-    middlewares: Array[Middleware] val = recover Array[Middleware] end)
+  fun ref put(
+    path: String,
+    handler: RequestHandler,
+    middlewares: Array[Middleware] val = [])
   =>
     """
     Create a route for a PUT method on the given URL path with the given
@@ -62,8 +60,10 @@ class iso Jennet
     """
     _add_route("PUT", path, handler, middlewares)
 
-  fun ref patch(path: String, handler: Handler,
-    middlewares: Array[Middleware] val = recover Array[Middleware] end)
+  fun ref patch(
+    path: String,
+    handler: RequestHandler,
+    middlewares: Array[Middleware] val = [])
   =>
     """
     Create a route for a PATCH method on the given URL path with the given
@@ -71,8 +71,10 @@ class iso Jennet
     """
     _add_route("PATCH", path, handler, middlewares)
 
-  fun ref delete(path: String, handler: Handler,
-    middlewares: Array[Middleware] val = recover Array[Middleware] end)
+  fun ref delete(
+    path: String,
+    handler: RequestHandler,
+    middlewares: Array[Middleware] val = [])
   =>
     """
     Create a route for a DELETE method on the given URL path with the given
@@ -80,8 +82,10 @@ class iso Jennet
     """
     _add_route("DELETE", path, handler, middlewares)
 
-  fun ref options(path: String, handler: Handler,
-    middlewares: Array[Middleware] val = recover Array[Middleware] end)
+  fun ref options(
+    path: String,
+    handler: RequestHandler,
+    middlewares: Array[Middleware] val = [])
   =>
     """
     Create a route for an OPTIONS method on the given URL path with the given
@@ -89,32 +93,25 @@ class iso Jennet
     """
     _add_route("OPTIONS", path, handler, middlewares)
 
-  fun ref serve_file(auth: AmbientAuth, path: String, filepath: String) =>
+  fun ref serve_file(auth: AmbientAuth, path: String, filepath: String) ? =>
     """
     Serve static file located at the relative filepath when GET requests are
     received for the given path.
-
-    filepath should be absolute, otherwise it is considered
-    relative to the current working directory of the jennet process.
     """
-    _add_route("GET", path, _FileServer(auth, filepath),
-      recover Array[Middleware] end)
+    let caps = recover val FileCaps + FileRead + FileStat end
+    _add_route("GET", path, _FileServer(FilePath(auth, filepath, caps)?), [])
 
-  fun ref serve_dir(auth: AmbientAuth, path: String, dir: String) =>
+  fun ref serve_dir(auth: AmbientAuth, path: String, dir: String) ? =>
     """
     Serve all files in dir using the incomming url path suffix denoted by
-    *filepath in the given path.
-
-    path must be in the form of: "/some_dir/*filepath".
-    dir should be absolute, otherwise it is considered relative
-    to the current working directory of the jennet process,
+    `*filepath` in the given path.
     """
-    _add_route("GET", path, _DirServer(auth, dir),
-      recover Array[Middleware] end)
+    let caps = recover val FileCaps + FileRead + FileStat + FileLookup end
+    _add_route("GET", path, _DirServer(FilePath(auth, dir, caps)?), [])
 
-  fun ref not_found(handler: Handler) =>
+  fun ref not_found(handler: RequestHandler) =>
     """
-    Replace the default Handler for NotFound responses.
+    Replace the default RequestHandler for NotFound responses.
     """
     _notfound = _HandlerGroup(handler)
 
@@ -124,16 +121,17 @@ class iso Jennet
     """
     _base_middlewares = mw
 
-  fun val serve() ? =>
+  fun val serve(config: ServerConfig, dump_routes: Bool = false): (Server | None) =>
     """
-    Serve incomming HTTP requests.
+    Serve incomming HTTP requests. Return the Server, or None if routes are invalid.
     """
-    let mux = _Multiplexer(_routes)?
+    let mux = try _Mux(_routes)? else return None end
+    if dump_routes then _out.print(mux.debug()) end
     let router_factory = _RouterFactory(consume mux, _responder, _notfound)
-    _server.set_handler(router_factory)
+    Server(_auth, _ServerInfo(_out, _responder), router_factory, config)
 
   fun ref _add_route(method: String, path: String,
-    handler: Handler, middlewares: Array[Middleware] val)
+    handler: RequestHandler, middlewares: Array[Middleware] val)
   =>
     let bms = _base_middlewares.size()
     let ms = recover
@@ -145,36 +143,45 @@ class iso Jennet
     let route = _Route(method, path, hg)
     _routes.push(route)
 
-class val _RouterFactory
-  let _mux: _Multiplexer val
+class val _RouterFactory is HandlerFactory
+  let _mux: _Mux
   let _responder: Responder
   let _not_found: _HandlerGroup
 
-  new val create(
-    mux: _Multiplexer val,
-    responder: Responder,
-    not_found: _HandlerGroup) =>
+  new val create(mux: _Mux, responder: Responder, not_found: _HandlerGroup) =>
     _mux = mux
     _responder = responder
     _not_found = not_found
 
-  fun apply(session: HTTPSession): HTTPHandler ref^ =>
-    recover ref _Router(_mux, _responder, _not_found) end
+  fun apply(session: Session): Handler ref^ =>
+    recover ref _Router(_mux, _responder, _not_found, session) end
 
 interface val Middleware
-  fun val apply(c: Context, req: Payload val): (Context iso^, Payload val) ?
-  fun val after(c: Context): Context iso^
+  fun val apply(ctx: Context): Context iso^ ?
+  fun val after(ctx: Context): Context iso^ => consume ctx
 
-interface val Handler
-  fun val apply(c: Context, req: Payload val): Context iso^ ?
+interface val RequestHandler
+  fun val apply(ctx: Context): Context iso^ ?
 
-class _DefaultNotFound is Handler
-  fun val apply(c: Context, req: Payload val): Context iso^ =>
-    c.respond(req, _NotFoundRes())
-    consume c
+class _DefaultNotFound is RequestHandler
+  fun val apply(ctx: Context): Context iso^ =>
+    ctx.respond(
+      StatusResponse(StatusNotFound),
+      StatusNotFound.string().array())
+    consume ctx
 
-primitive _NotFoundRes
-  fun apply(): Payload iso^ =>
-    let res = Payload.response(StatusNotFound)
-    res.add_chunk("404: Not Found")
-    consume res
+primitive StatusResponse
+  fun apply(
+    status: Status,
+    headers: Array[(String, String)] box = [],
+    close: Bool = true)
+    : BuildableResponse iso^
+  =>
+    let res = recover BuildableResponse(status) end
+    for (k, v) in headers.values() do
+      res.add_header(k, v)
+    end
+    if close and (res.header("Connection") is None) then
+      res.add_header("Connection", "close")
+    end
+    res

@@ -1,20 +1,24 @@
-use "http"
+use "http_server"
 use "../../jennet"
 
 actor Main
   new create(env: Env) =>
-    let auth = try
-      env.root as AmbientAuth
-    else
-      env.out.print("unable to use network.")
-      return
-    end
+    let auth =
+      try
+        env.root as AmbientAuth
+      else
+        env.out.print("unable to use network.")
+        return
+      end
 
-    let jennet = Jennet(auth, env.out, "8080")
-    jennet.serve_file(auth, "/", "index.html")
+    let server =
+      try
+        Jennet(auth, env.out)
+          .> serve_file(auth, "/", "index.html")?
+          .serve(ServerConfig(where port' = "8080"))
+      else
+        env.out.print("bad file path!")
+        return
+      end
 
-    try
-      (consume jennet).serve()?
-    else
-      env.out.print("invalid routes.")
-    end
+    if server is None then env.out.print("bad routes!") end
