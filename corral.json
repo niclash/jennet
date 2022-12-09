@@ -1,4 +1,7 @@
 {
+  "packages": [
+    "jennet"
+  ],
   "deps": [
     {
       "locator": "github.com/ponylang/http-server.git",
