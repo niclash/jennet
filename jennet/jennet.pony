@@ -6,14 +6,14 @@ use "valbytes"
 
 class iso Jennet
   let _out: OutStream
-  let _auth: (AmbientAuth val | NetAuth val)
+  let _auth: TCPListenAuth val
   var _responder: Responder
   var _base_middlewares: Array[Middleware] val = []
   let _routes: Array[_Route] iso = recover Array[_Route] end
   var _notfound: _HandlerGroup = _HandlerGroup(_DefaultNotFound)
 
   new iso create(
-    auth: (AmbientAuth val | NetAuth val),
+    auth: TCPListenAuth val,
     out: OutStream,
     host: String,
     service: String,
@@ -93,21 +93,21 @@ class iso Jennet
     """
     _add_route("OPTIONS", path, handler, middlewares)
 
-  fun ref serve_file(auth: AmbientAuth, path: String, filepath: String) ? =>
+  fun ref serve_file(auth: FileAuth, path: String, filepath: String) =>
     """
     Serve static file located at the relative filepath when GET requests are
     received for the given path.
     """
     let caps = recover val FileCaps + FileRead + FileStat end
-    _add_route("GET", path, _FileServer(FilePath(auth, filepath, caps)?), [])
+    _add_route("GET", path, _FileServer(FilePath(auth, filepath, caps)), [])
 
-  fun ref serve_dir(auth: AmbientAuth, path: String, dir: String) ? =>
+  fun ref serve_dir(auth: FileAuth, path: String, dir: String) =>
     """
     Serve all files in dir using the incomming url path suffix denoted by
     `*filepath` in the given path.
     """
     let caps = recover val FileCaps + FileRead + FileStat + FileLookup end
-    _add_route("GET", path, _DirServer(FilePath(auth, dir, caps)?), [])
+    _add_route("GET", path, _DirServer(FilePath(auth, dir, caps)), [])
 
   fun ref not_found(handler: RequestHandler) =>
     """
