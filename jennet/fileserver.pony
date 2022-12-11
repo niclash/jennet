@@ -36,7 +36,7 @@ class _DirServer is RequestHandler
       var bs = ByteArrays
       with file = OpenFile(_dir.join(filepath)?) as File do
         for line in file.lines() do
-          bs = bs + consume line
+          bs = bs + consume line + "\n"
         end
       end
       ctx.respond(StatusResponse(StatusOK), bs)
