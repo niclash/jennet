@@ -4,7 +4,7 @@
   ],
   "deps": [
     {
-      "locator": "github.com/ponylang/http-server.git",
+      "locator": "github.com/niclash/http-server.git",
       "version": "0.4.1"
     },
     {
