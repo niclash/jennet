@@ -4,11 +4,11 @@
   ],
   "deps": [
     {
-      "locator": "github.com/niclash/http-server.git",
+      "locator": "github.com/ponylang/http-server.git",
       "version": "main"
     },
     {
-      "locator": "github.com/niclash/crypto.git",
+      "locator": "github.com/ponylang/crypto.git",
       "version": "main"
     }
   ],
